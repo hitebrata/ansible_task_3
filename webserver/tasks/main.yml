@@ -1,0 +1,37 @@
+    - name: wait for target connection to become reachable 
+      wait_for_connection:
+    - name: install httpd
+      package:
+         name: httpd
+         state: present
+      register: x
+    - name: document root dir
+      file:
+         state: directory
+         dest:  "{{ dcdir }}"
+         mode: '0755'
+         owner: ec2-user
+         group: ec2-user
+      register: y
+      tags: webroot
+
+    - name: configure apache
+      template:
+              src: templates/localconf.conf.j2
+              dest: /etc/httpd/conf.d/h.conf
+      when: x.rc == 0
+      tags: webconf
+      notify: httpd_service
+
+    - name: copy html code
+      get_url:
+         url: "https://raw.githubusercontent.com/hitebrata/ansible_task_3/main/index.html"
+         dest: "{{ dcdir }}"
+      when: y.failed == false
+      tags: git
+    - name: starting apache
+      service:
+         name: httpd
+         state: started
+         enabled: yes
+         

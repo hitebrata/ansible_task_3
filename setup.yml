@@ -1,0 +1,117 @@
+- hosts: localhost
+  vars_files:
+      - secure.yml
+  vars:
+      keyname: key2
+      instance: t2.micro
+      image: ami-0e306788ff2473ccb
+      subnet: subnet-d0f08f9c
+      region: ap-south-1
+      sg_id: web
+      websg: web_sg
+      lbsg: lb_sg
+  tasks:
+  - name: install python
+    pip:
+      name: boto3
+      state: present
+  - name: Create a security group for WebServer
+    ec2_group:
+       name: "{{ websg }}"
+       description: "Sec group for web"
+       region: "{{ region }}"
+       aws_access_key: "{{ myaccesskey }}"
+       aws_secret_key: "{{ mysecretkey }}"
+       rules:
+           - proto: tcp
+             from_port: 80
+             to_port: 80
+             cidr_ip: 0.0.0.0/0
+           - proto: tcp
+             from_port: 22
+             to_port: 22
+             cidr_ip: 0.0.0.0/0
+       rules_egress:
+           - proto: all
+             cidr_ip: 0.0.0.0/0
+    register: x
+  - name: Create a security group for LoadBalancer
+    ec2_group:
+       name: "{{ lbsg }}"
+       description: "Sec group for web"
+       region: "{{ region }}"
+       aws_access_key: "{{ myaccesskey }}"
+       aws_secret_key: "{{ mysecretkey }}"
+       rules:
+           - proto: tcp
+             from_port: 8080
+             to_port: 8080
+             cidr_ip: 0.0.0.0/0
+           - proto: tcp
+             from_port: 22
+             to_port: 22
+             cidr_ip: 0.0.0.0/0
+       rules_egress:
+           - proto: all
+             cidr_ip: 0.0.0.0/0
+    register: y
+    
+  - name: Provisioning Webserver
+    ec2:
+       aws_access_key: "{{ myaccesskey }}"
+       aws_secret_key: "{{ mysecretkey }}"
+       key_name: "{{ keyname }}"
+       #       id: "{{ sg_id }}"
+       group_id: "{{ x.group_id }}" 
+       instance_type: "{{ instance }}"
+       image: "{{ image }}"
+       wait: yes
+       count: 3
+       instance_tags:
+            Name: webserver
+       vpc_subnet_id: "{{ subnet }}"
+       assign_public_ip: yes
+       region: "{{ region }}"
+       state: present
+    register: ec2
+  - name: Add new instance to host group
+    add_host:
+           hostname: "{{ item.public_ip }}"
+           groups: web
+    loop: "{{ ec2.instances }}"
+  - name: wait for connection to ec2
+    wait_for:
+         port: 22
+         state: started
+         host: "{{ item.public_dns_name }}"
+    loop: "{{ ec2.instances }}"
+
+  - name: Provisioning Haproxy
+    ec2:
+       aws_access_key: "{{ myaccesskey }}"
+       aws_secret_key: "{{ mysecretkey }}"
+       key_name: "{{ keyname }}"
+       #       id: "{{ sg_id }}"
+       group_id: "{{ y.group_id }}"
+       instance_type: "{{ instance }}"
+       image: "{{ image }}"
+       wait: yes
+       count: 1
+       instance_tags:
+            Name: haproxy
+       vpc_subnet_id: "{{ subnet }}"
+       assign_public_ip: yes
+       region: "{{ region }}"
+       state: present
+    register: ec2
+  - name: Add new instance to host group
+    add_host:
+           hostname: "{{ item.public_ip }}"
+           groups: lb
+    loop: "{{ ec2.instances }}"
+  - name: wait for connection to ec2
+    wait_for:
+         port: 22
+         state: started
+         host: "{{ item.public_dns_name }}"
+    loop: "{{ ec2.instances }}"

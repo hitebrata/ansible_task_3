@@ -1,0 +1,6 @@
+---
+# handlers file for test
+- name: httpd_service
+  service:
+       name: httpd
+       state: restarted

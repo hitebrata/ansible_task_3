@@ -1,0 +1,4 @@
+---
+# vars file for test
+dcdir: "/var/www/test"
+httpport: 80
